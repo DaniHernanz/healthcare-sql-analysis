@@ -1,0 +1,441 @@
+-- =============================================================================== --
+-- PROYECTO: Aplicabilidad de SQL en Entorno Clínico
+-- AUTOR: Dani
+-- DESCRIPCIÓN: Análisis exploratorio de datos hospitalarios
+--              usando SQL avanzado. El objetivo es responder
+--              preguntas de negocio clínicas reales que sirven
+--              de base para proyectos de IA en salud.
+-- HERRAMIENTA: PostgreSQL 15 (DB Fiddle)
+-- =============================================================================== --
+
+-- =============================================================================== --
+-- SECCIÓN 1: CREACIÓN DE TABLAS Y DATOS
+-- =============================================================================== --
+-- Dataset simulado inspirado en la estructura de MIMIC-IV,
+-- el estándar de referencia en datos clínicos para IA en salud.
+-- Incluye pacientes, ingresos, diagnósticos, prescripciones
+-- y resultados de laboratorio.
+-- =============================================================================== --
+
+CREATE TABLE patients (
+    patient_id  INT PRIMARY KEY,
+    gender      VARCHAR(1),
+    age         INT,
+    insurance   VARCHAR(50)
+);
+
+CREATE TABLE admissions (
+    admission_id    INT PRIMARY KEY,
+    patient_id      INT,
+    admission_date  DATE,
+    discharge_date  DATE,
+    admission_type  VARCHAR(50),
+    diagnosis       VARCHAR(100)
+);
+
+CREATE TABLE diagnoses (
+    diagnosis_id  INT PRIMARY KEY,
+    admission_id  INT,
+    icd_code      VARCHAR(10),
+    description   VARCHAR(100),
+    sequence      INT
+);
+
+CREATE TABLE prescriptions (
+    prescription_id  INT PRIMARY KEY,
+    admission_id     INT,
+    drug             VARCHAR(100),
+    start_date       DATE,
+    end_date         DATE
+);
+
+CREATE TABLE lab_results (
+    lab_id      INT PRIMARY KEY,
+    patient_id  INT,
+    admission_id INT,
+    test_name   VARCHAR(100),
+    value       NUMERIC,
+    unit        VARCHAR(20),
+    test_date   DATE
+);
+
+INSERT INTO patients VALUES
+(1, 'M', 67, 'Medicare'),
+(2, 'F', 45, 'Private'),
+(3, 'M', 82, 'Medicare'),
+(4, 'F', 54, 'Medicaid'),
+(5, 'M', 71, 'Medicare'),
+(6, 'F', 38, 'Private'),
+(7, 'M', 60, 'Medicaid'),
+(8, 'F', 77, 'Medicare');
+
+INSERT INTO admissions VALUES
+(101, 1, '2023-01-05', '2023-01-12', 'EMERGENCY', 'Heart failure'),
+(102, 1, '2023-04-10', '2023-04-15', 'EMERGENCY', 'Heart failure'),
+(103, 2, '2023-02-01', '2023-02-05', 'ELECTIVE',  'Diabetes'),
+(104, 3, '2023-01-15', '2023-01-25', 'EMERGENCY', 'Pneumonia'),
+(105, 3, '2023-03-20', '2023-04-02', 'EMERGENCY', 'Heart failure'),
+(106, 4, '2023-05-01', '2023-05-03', 'URGENT',    'Hypertension'),
+(107, 5, '2023-02-14', '2023-02-20', 'EMERGENCY', 'Heart failure'),
+(108, 5, '2023-06-01', '2023-06-10', 'EMERGENCY', 'Pneumonia'),
+(109, 6, '2023-03-10', '2023-03-11', 'ELECTIVE',  'Diabetes'),
+(110, 7, '2023-04-05', '2023-04-18', 'EMERGENCY', 'Heart failure'),
+(111, 8, '2023-01-20', '2023-02-01', 'EMERGENCY', 'Pneumonia'),
+(112, 8, '2023-05-15', '2023-05-20', 'EMERGENCY', 'Heart failure');
+
+INSERT INTO diagnoses VALUES
+(1,  101, 'I50.9', 'Heart failure unspecified', 1),
+(2,  101, 'I10',   'Hypertension',              2),
+(3,  102, 'I50.9', 'Heart failure unspecified', 1),
+(4,  103, 'E11.9', 'Type 2 diabetes',           1),
+(5,  104, 'J18.9', 'Pneumonia unspecified',      1),
+(6,  105, 'I50.9', 'Heart failure unspecified', 1),
+(7,  105, 'E11.9', 'Type 2 diabetes',           2),
+(8,  106, 'I10',   'Hypertension',              1),
+(9,  107, 'I50.9', 'Heart failure unspecified', 1),
+(10, 108, 'J18.9', 'Pneumonia unspecified',      1),
+(11, 109, 'E11.9', 'Type 2 diabetes',           1),
+(12, 110, 'I50.9', 'Heart failure unspecified', 1),
+(13, 111, 'J18.9', 'Pneumonia unspecified',      1),
+(14, 112, 'I50.9', 'Heart failure unspecified', 1);
+
+INSERT INTO prescriptions VALUES
+(1,  101, 'Furosemide',  '2023-01-05', '2023-01-12'),
+(2,  101, 'Lisinopril',  '2023-01-05', '2023-01-12'),
+(3,  102, 'Furosemide',  '2023-04-10', '2023-04-15'),
+(4,  103, 'Metformin',   '2023-02-01', '2023-02-05'),
+(5,  104, 'Amoxicillin', '2023-01-15', '2023-01-25'),
+(6,  105, 'Furosemide',  '2023-03-20', '2023-04-02'),
+(7,  105, 'Metformin',   '2023-03-20', '2023-04-02'),
+(8,  107, 'Furosemide',  '2023-02-14', '2023-02-20'),
+(9,  110, 'Furosemide',  '2023-04-05', '2023-04-18'),
+(10, 111, 'Amoxicillin', '2023-01-20', '2023-02-01'),
+(11, 112, 'Furosemide',  '2023-05-15', '2023-05-20');
+
+INSERT INTO lab_results VALUES
+(1,  1, 101, 'Glucose',    145, 'mg/dL', '2023-01-05'),
+(2,  1, 101, 'Glucose',    132, 'mg/dL', '2023-01-08'),
+(3,  1, 102, 'Glucose',    160, 'mg/dL', '2023-04-10'),
+(4,  2, 103, 'Glucose',    210, 'mg/dL', '2023-02-01'),
+(5,  2, 103, 'Glucose',    185, 'mg/dL', '2023-02-03'),
+(6,  3, 104, 'Creatinine', 1.2, 'mg/dL', '2023-01-15'),
+(7,  3, 105, 'Creatinine', 1.8, 'mg/dL', '2023-03-20'),
+(8,  5, 107, 'Glucose',    178, 'mg/dL', '2023-02-14'),
+(9,  5, 108, 'Glucose',    155, 'mg/dL', '2023-06-01'),
+(10, 8, 111, 'Creatinine', 0.9, 'mg/dL', '2023-01-20'),
+(11, 8, 112, 'Creatinine', 1.4, 'mg/dL', '2023-05-15');
+
+
+-- =============================================================================== --
+-- SECCIÓN 2: EJERCICIOS DE CONSOLIDACIÓN TÉCNICA
+-- Queries progresivas para dominar JOINs, agregaciones, CTEs, subconsultas y window functions.
+-- =============================================================================== --
+
+
+-- -------------------------------------------------------------------------------------------------------------------------------- --
+CASO 1: Pacientes con múltiples ingresos y días entre ellos
+-- -------------------------------------------------------------------------------------------------------------------------------- --
+-- Técnica: Self-join
+-- Contexto: Identificar patrones de reingreso es el primer paso antes de construir modelos predictivos de readmisión.
+-- -------------------------------------------------------------------------------------------------------------------------------- --
+
+SELECT
+    a1.patient_id,
+    a1.admission_date                             AS ingreso_actual,
+    a2.admission_date                             AS ingreso_anterior,
+    a1.admission_date - a2.admission_date         AS dias_entre_ingresos
+FROM admissions a1
+JOIN admissions a2
+    ON  a1.patient_id     = a2.patient_id
+    AND a1.admission_date > a2.admission_date
+ORDER BY a1.patient_id, a1.admission_date;
+
+
+-- -------------------------------------------------------------------------------------------------------------------------------- --
+CASO 2: Diagnósticos con más de 2 ingresos distintos
+-- -------------------------------------------------------------------------------------------------------------------------------- --
+-- Técnica: GROUP BY + HAVING
+-- Contexto: Detectar diagnósticos de alto volumen es clave para priorizar casos de uso de IA en gestión hospitalaria.
+-- -------------------------------------------------------------------------------------------------------------------------------- --
+
+SELECT
+    d.description,
+    COUNT(d.admission_id) AS total_ingresos
+FROM admissions a
+JOIN diagnoses d ON a.admission_id = d.admission_id
+GROUP BY d.description
+HAVING COUNT(d.admission_id) > 2
+ORDER BY total_ingresos DESC;
+
+
+-- -------------------------------------------------------------------------------------------------------------------------------- --
+CASO 3: Estancia media por tipo de ingreso
+-- -------------------------------------------------------------------------------------------------------------------------------- --
+-- Técnica: Agregación + ORDER BY
+-- Contexto: La estancia media por tipo de ingreso es un KPI operativo fundamental en gestión hospitalaria.
+-- -------------------------------------------------------------------------------------------------------------------------------- --
+
+SELECT
+    admission_type,
+    COUNT(admission_id)                             AS total_ingresos,
+    AVG(discharge_date - admission_date)            AS estancia_media_dias
+FROM admissions
+GROUP BY admission_type
+ORDER BY estancia_media_dias DESC;
+
+
+-- -------------------------------------------------------------------------------------------------------------------------------- --
+CASO 4: Pacientes con más de un ingreso EMERGENCY
+-- -------------------------------------------------------------------------------------------------------------------------------- --
+-- Técnica: CTE + JOIN
+-- Contexto: Los pacientes con múltiples urgencias son el segmento prioritario para intervenciones preventivas con IA.
+-- -------------------------------------------------------------------------------------------------------------------------------- --
+
+WITH emergencias AS (
+    SELECT
+        patient_id,
+        COUNT(admission_id) AS num_emergencias
+    FROM admissions
+    WHERE admission_type = 'EMERGENCY'
+    GROUP BY patient_id
+    HAVING COUNT(admission_id) > 1
+)
+SELECT
+    e.patient_id,
+    e.num_emergencias,
+    p.age,
+    p.gender
+FROM emergencias e
+JOIN patients p ON e.patient_id = p.patient_id
+ORDER BY e.num_emergencias DESC;
+
+
+-- -------------------------------------------------------------------------------------------------------------------------------- --
+CASO 5: Ingresos con estancia superior a la media general
+-- -------------------------------------------------------------------------------------------------------------------------------- --
+-- Técnica: Subconsulta escalar en WHERE
+-- Contexto: Detectar ingresos atípicamente largos es un indicador de complejidad clínica relevante para triaje con IA.
+-- -------------------------------------------------------------------------------------------------------------------------------- --
+
+SELECT
+    patient_id,
+    admission_date,
+    discharge_date - admission_date AS dias_estancia
+FROM admissions
+WHERE (discharge_date - admission_date) > (
+    SELECT AVG(discharge_date - admission_date)
+    FROM admissions
+)
+ORDER BY dias_estancia DESC;
+
+
+-- -------------------------------------------------------------------------------------------------------------------------------- --
+CASO 6: Numeración cronológica de ingresos por paciente
+-- -------------------------------------------------------------------------------------------------------------------------------- --
+-- Técnica: Window function ROW_NUMBER()
+-- Nota conceptual: ROW_NUMBER() asigna números únicos siempre.
+-- RANK() asigna el mismo número si hay empate y salta el siguiente.
+-- En datos clínicos con fechas exactas, ROW_NUMBER() es más seguro.
+-- -------------------------------------------------------------------------------------------------------------------------------- --
+
+SELECT
+    patient_id,
+    admission_date,
+    ROW_NUMBER() OVER (
+        PARTITION BY patient_id
+        ORDER BY admission_date
+    ) AS numero_ingreso
+FROM admissions
+ORDER BY patient_id, admission_date;
+
+
+-- -------------------------------------------------------------------------------------------------------------------------------- --
+CASO 7: Fecha del ingreso anterior por paciente (LAG)
+-- -------------------------------------------------------------------------------------------------------------------------------- --
+-- Técnica: Window function LAG()
+-- Contexto: LAG() permite análisis longitudinal de pacientes sin necesidad de self-joins — más eficiente y escalable.
+-- El primer ingreso devuelve NULL al no tener antecedente.
+-- -------------------------------------------------------------------------------------------------------------------------------- --
+
+SELECT
+    patient_id,
+    admission_date,
+    LAG(admission_date) OVER (
+        PARTITION BY patient_id
+        ORDER BY admission_date
+    ) AS fecha_ingreso_anterior
+FROM admissions
+ORDER BY patient_id, admission_date;
+
+
+-- -------------------------------------------------------------------------------------------------------------------------------- --
+CASO 8: Estancia actual y media acumulada por paciente
+-- -------------------------------------------------------------------------------------------------------------------------------- --
+-- Técnica: Window function AVG() con frame acumulado
+-- Contexto: La media acumulada permite ver si un paciente tiende a mejorar (estancias más cortas) o empeorar con el tiempo.
+-- -------------------------------------------------------------------------------------------------------------------------------- --
+
+SELECT
+    patient_id,
+    admission_date,
+    discharge_date - admission_date                    AS dias_estancia,
+    AVG(discharge_date - admission_date) OVER (
+        PARTITION BY patient_id
+        ORDER BY admission_date
+    )                                                  AS media_acumulada_dias
+FROM admissions
+ORDER BY patient_id, admission_date;
+
+
+-- =============================================================================== --
+-- SECCIÓN 3: PREGUNTAS DE NEGOCIO REALES
+-- Análisis orientados a responder preguntas clínicas concretas, del tipo que precede a un proyecto de IA en salud.
+-- =============================================================================== --
+
+-- -------------------------------------------------------------------------------------------------------------------------------- --
+PREGUNTA 1: ¿Qué diagnósticos tienen mayor tasa de reingreso en los 30 días siguientes al alta?
+-- -------------------------------------------------------------------------------------------------------------------------------- --
+-- Relevancia: Los reingresos en 30 días son el KPI de calidad asistencial más regulado internacionalmente. Los modelos de IA de predicción de readmisión se entrenan precisamente sobre este tipo de datos.
+-- Resultado: En este dataset no hay reingresos en < 30 días, pero la query está validada ampliando el umbral a 100 días.
+-- -------------------------------------------------------------------------------------------------------------------------------- --
+
+WITH reingresos AS (
+    SELECT
+        patient_id,
+        diagnosis,
+        admission_date,
+        admission_date - LAG(discharge_date) OVER (
+            PARTITION BY patient_id
+            ORDER BY admission_date
+        ) AS dias_desde_alta
+    FROM admissions
+)
+SELECT
+    patient_id,
+    diagnosis,
+    dias_desde_alta
+FROM reingresos
+WHERE dias_desde_alta <= 30
+ORDER BY dias_desde_alta;
+
+
+-- -------------------------------------------------------------------------------------------------------------------------------- --
+PREGUNTA 2: ¿Hay diferencias en la estancia media según el tipo de ingreso y el género del paciente?
+-- -------------------------------------------------------------------------------------------------------------------------------- --
+-- Relevancia: Detectar diferencias sistemáticas por subgrupos es el primer paso para identificar sesgos en modelos de IA y para diseñar intervenciones personalizadas.
+-- Hallazgo: Los ingresos de emergencia tienen una estancia media ~4x mayor que los electivos, independientemente del género.
+-- -------------------------------------------------------------------------------------------------------------------------------- --
+
+SELECT
+    a.admission_type,
+    p.gender,
+    COUNT(a.admission_id)                       AS total_ingresos,
+    AVG(a.discharge_date - a.admission_date)    AS estancia_media_dias
+FROM patients p
+JOIN admissions a ON p.patient_id = a.patient_id
+GROUP BY a.admission_type, p.gender
+ORDER BY estancia_media_dias DESC;
+
+
+-- -------------------------------------------------------------------------------------------------------------------------------- --
+PREGUNTA 3: ¿Qué medicamentos aparecen con más frecuencia en pacientes con múltiples ingresos?
+-- -------------------------------------------------------------------------------------------------------------------------------- --
+-- Relevancia: La asociación entre pautas farmacológicas y reingresos es un eje central de los modelos de optimización terapéutica con IA en farma y hospitales.
+-- Hallazgo: Furosemide lidera (5 veces), consistente con la alta prevalencia de insuficiencia cardíaca en este grupo.
+-- -------------------------------------------------------------------------------------------------------------------------------- --
+
+WITH pacientes_multiples AS (
+    SELECT patient_id
+    FROM admissions
+    GROUP BY patient_id
+    HAVING COUNT(admission_id) > 1
+)
+SELECT
+    pr.drug,
+    COUNT(pr.drug) AS veces_prescrito
+FROM pacientes_multiples pm
+JOIN admissions a  ON pm.patient_id  = a.patient_id
+JOIN prescriptions pr ON a.admission_id = pr.admission_id
+GROUP BY pr.drug
+ORDER BY veces_prescrito DESC;
+
+
+-- -------------------------------------------------------------------------------------------------------------------------------- --
+VARIANTE 3A: Medicamento más frecuente en ingresos de emergencia
+-- -------------------------------------------------------------------------------------------------------------------------------- --
+
+SELECT
+    pr.drug,
+    COUNT(pr.drug) AS veces_prescrito
+FROM admissions a
+JOIN prescriptions pr ON a.admission_id = pr.admission_id
+WHERE a.admission_type = 'EMERGENCY'
+GROUP BY pr.drug
+ORDER BY veces_prescrito DESC;
+
+
+-- -------------------------------------------------------------------------------------------------------------------------------- --
+VARIANTE 3B: Diferencias en prescripción según género
+-- -------------------------------------------------------------------------------------------------------------------------------- --
+
+SELECT
+    p.gender,
+    pr.drug,
+    COUNT(pr.drug) AS veces_prescrito
+FROM patients p
+JOIN admissions a   ON p.patient_id   = a.patient_id
+JOIN prescriptions pr ON a.admission_id = pr.admission_id
+GROUP BY p.gender, pr.drug
+ORDER BY p.gender, veces_prescrito DESC;
+
+
+-- -------------------------------------------------------------------------------------------------------------------------------- --
+PREGUNTA 4: ¿Cómo evoluciona la glucosa a lo largo de los ingresos de un mismo paciente?
+-- -------------------------------------------------------------------------------------------------------------------------------- --
+-- Relevancia: El seguimiento longitudinal de biomarcadores es la base de los modelos de IA para detección temprana de descontrol metabólico y prevención de complicaciones.
+-- -------------------------------------------------------------------------------------------------------------------------------- --
+
+SELECT
+    l.patient_id,
+    a.admission_date,
+    l.value AS glucosa_mgdl
+FROM lab_results l
+JOIN admissions a ON l.admission_id = a.admission_id
+WHERE l.test_name = 'Glucose'
+ORDER BY l.patient_id, a.admission_date;
+
+
+-- -------------------------------------------------------------------------------------------------------------------------------- --
+PREGUNTA 5: ¿Qué pacientes tienen perfil de alto riesgo?
+-- -------------------------------------------------------------------------------------------------------------------------------- --
+-- Definición: más de 1 ingreso de emergencia Y glucosa media > 150 mg/dL
+-- -------------------------------------------------------------------------------------------------------------------------------- --
+-- Relevancia: La identificación de pacientes de alto riesgo multicritério es el caso de uso más directo de IA en salud: permite priorizar intervenciones preventivas antes de que el paciente vuelva a urgencias.
+-- Hallazgo: Paciente 5 (hombre, 71 años, Medicare).
+-- -------------------------------------------------------------------------------------------------------------------------------- --
+
+WITH emergencias AS (
+    SELECT
+        patient_id,
+        COUNT(admission_id) AS num_emergencias
+    FROM admissions
+    WHERE admission_type = 'EMERGENCY'
+    GROUP BY patient_id
+    HAVING COUNT(admission_id) > 1
+),
+glucosa_alta AS (
+    SELECT
+        patient_id,
+        ROUND(AVG(value), 1) AS media_glucosa
+    FROM lab_results
+    WHERE test_name = 'Glucose'
+    GROUP BY patient_id
+    HAVING AVG(value) > 150
+)
+SELECT
+    e.patient_id,
+    e.num_emergencias,
+    g.media_glucosa
+FROM emergencias e
+JOIN glucosa_alta g ON e.patient_id = g.patient_id
+ORDER BY g.media_glucosa DESC;
